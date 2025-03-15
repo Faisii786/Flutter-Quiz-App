@@ -15,7 +15,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   ApiClass apiClass = ApiClass();
   int currentQuestionIndex = 0;
   List? questions;
@@ -23,11 +24,27 @@ class _HomeScreenState extends State<HomeScreen> {
   String errorMessage = '';
   String? selectedAnswer;
   int correctAnswers = 0;
+  late AnimationController _controller;
+  late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    );
     fetchQuestions();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   Future<void> fetchQuestions() async {
@@ -37,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
         questions = response.results;
         isLoading = false;
       });
+      _controller.forward();
     } catch (error) {
       setState(() {
         isLoading = false;
@@ -47,8 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void nextQuestion() {
     if (selectedAnswer == null) {
-      ShowSnackBar().snackBarTop('Error404', 'Please select an option first');
-
+      ShowSnackBar()
+          .snackBarTop('Error', 'Please select an answer to continue');
       return;
     }
 
@@ -58,8 +76,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       if (currentQuestionIndex < questions!.length - 1) {
-        currentQuestionIndex++;
-        selectedAnswer = null;
+        _controller.reverse().then((_) {
+          setState(() {
+            currentQuestionIndex++;
+            selectedAnswer = null;
+          });
+          _controller.forward();
+        });
       } else {
         showResult();
       }
@@ -67,12 +90,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void showResult() {
-    Get.to(() => GettingResultsSplash(
-          correctAnswers: correctAnswers.toInt(),
-          currentQuestionIndex: currentQuestionIndex.toInt(),
-          selectedAnswer: selectedAnswer.toString(),
-          resetQuiz: resetQuiz,
-        ));
+    Get.to(
+      () => GettingResultsSplash(
+        correctAnswers: correctAnswers.toInt(),
+        currentQuestionIndex: currentQuestionIndex.toInt(),
+        selectedAnswer: selectedAnswer.toString(),
+        resetQuiz: resetQuiz,
+      ),
+      transition: Transition.fadeIn,
+    );
   }
 
   void resetQuiz() {
@@ -80,119 +106,182 @@ class _HomeScreenState extends State<HomeScreen> {
       currentQuestionIndex = 0;
       correctAnswers = 0;
       selectedAnswer = null;
+      isLoading = true;
     });
+    fetchQuestions();
   }
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final height = MediaQuery.of(context).size.height;
-
     int currentQuestionNumber = currentQuestionIndex + 1;
     int totalQuestions = questions?.length ?? 0;
 
-    return SafeArea(
-      child: Scaffold(
-        appBar: AppBar(
-          leading: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: CircleAvatar(
-              radius: 10,
-              backgroundColor: Colors.transparent,
-              backgroundImage: AssetImage('images/quiz.png'),
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'images/quiz.png',
+              height: 32,
             ),
-          ),
-          automaticallyImplyLeading: false,
-          title: Text(
-            "Question $currentQuestionNumber out of $totalQuestions",
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-          ),
+            const SizedBox(width: 12),
+            Text(
+              "Question $currentQuestionNumber/$totalQuestions",
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
-        body: isLoading
-            ? const Center(
-                child: SpinKitFadingCircle(
-                size: 40,
-                color: Colors.white,
-              ))
-            : errorMessage.isNotEmpty
-                ? Center(child: Text(errorMessage))
-                : Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 10),
-                    child: ListView(
-                      children: [
-                        SizedBox(height: height * 0.01),
-                        CustomerQuestionsContainer(
-                          text: questions![currentQuestionIndex]
-                              .question
-                              .toString(),
-                        ),
-                        const SizedBox(height: 10),
-                        ...questions![currentQuestionIndex]
-                            .incorrectAnswers!
-                            .map((answer) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  selectedAnswer = answer.toString();
-                                });
-                              },
-                              child: CustomerAnswersContainer(
-                                text: answer.toString(),
-                                isSelected: selectedAnswer == answer,
-                              ),
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 10),
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              selectedAnswer = questions![currentQuestionIndex]
-                                  .correctAnswer
-                                  .toString();
-                            });
-                          },
-                          child: CustomerAnswersContainer(
-                            text: questions![currentQuestionIndex]
-                                .correctAnswer
-                                .toString(),
-                            isSelected: selectedAnswer ==
-                                questions![currentQuestionIndex].correctAnswer,
-                          ),
-                        ),
-                      ],
+        elevation: 0,
+      ),
+      body: isLoading
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SpinKitPulse(
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 50.0,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading Questions...',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white70,
+                      fontSize: 16,
                     ),
                   ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-        floatingActionButton: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          child: InkWell(
-            onTap: nextQuestion,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                gradient: const LinearGradient(
-                    colors: [Colors.blue, Colors.deepPurple]),
+                ],
               ),
-              width: width * 9,
-              height: height * 0.075,
-              child: Center(
-                child: Text(
-                  "N e x t",
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w400),
+            )
+          : errorMessage.isNotEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        errorMessage,
+                        style: GoogleFonts.poppins(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            isLoading = true;
+                            errorMessage = '';
+                          });
+                          fetchQuestions();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: Text(
+                          'Retry',
+                          style: GoogleFonts.poppins(fontSize: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: FadeTransition(
+                          opacity: _animation,
+                          child: Column(
+                            children: [
+                              CustomerQuestionsContainer(
+                                text: questions![currentQuestionIndex]
+                                    .question
+                                    .toString(),
+                              ),
+                              const SizedBox(height: 24),
+                              ...questions![currentQuestionIndex]
+                                  .incorrectAnswers!
+                                  .map((answer) {
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      selectedAnswer = answer.toString();
+                                    });
+                                  },
+                                  child: CustomerAnswersContainer(
+                                    text: answer.toString(),
+                                    isSelected: selectedAnswer == answer,
+                                  ),
+                                );
+                              }),
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    selectedAnswer =
+                                        questions![currentQuestionIndex]
+                                            .correctAnswer
+                                            .toString();
+                                  });
+                                },
+                                child: CustomerAnswersContainer(
+                                  text: questions![currentQuestionIndex]
+                                      .correctAnswer
+                                      .toString(),
+                                  isSelected: selectedAnswer ==
+                                      questions![currentQuestionIndex]
+                                          .correctAnswer,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: ElevatedButton(
+                          onPressed: nextQuestion,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            currentQuestionIndex < questions!.length - 1
+                                ? "Next Question"
+                                : "Finish Quiz",
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
